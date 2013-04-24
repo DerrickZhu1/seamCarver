@@ -3,18 +3,21 @@ public class SeamCarver
 {
 	private Picture picture;
 	private double[][] distTo;
-	
+	private double[][] energyMatrix;
+	private double[][] transEnergyMatrix;
 	//stores only columns, no row indication.
 	private int[][] edgeTo;
 	
 	public SeamCarver(Picture picture)
 	{
 		this.picture = new Picture(picture);
+		this.energyMatrix = energyMatrix();
+		this.transEnergyMatrix = transposeEnergyMatrix(this.energyMatrix);
 	}
 	
-	private void init(double[][] energyMatrix)
+	private void init(double[][] eMatrix)
 	{
-		distTo = new double[energyMatrix.length][energyMatrix[0].length];
+		distTo = new double[eMatrix.length][eMatrix[0].length];
 		
 		for(int i = 0; i < distTo.length; i++)
 		{
@@ -27,7 +30,7 @@ public class SeamCarver
 			}
 		}
 		
-		this.edgeTo = new int[energyMatrix.length][energyMatrix[0].length];
+		this.edgeTo = new int[eMatrix.length][eMatrix[0].length];
 	}
 	
 	public Picture picture()
@@ -61,7 +64,7 @@ public class SeamCarver
 	public double energy(int x, int y) throws IllegalArgumentException
 	{
 		//if a pixel at the border, then 255^2 + 255^2 + 255^2
-		if(x < 0 || y < 0)
+		if(x < 0 || y < 0 || x >= width() || y >= height())
 			throw new IllegalArgumentException("Bad pixel coordinates: x = " + x + "; y = " + y);
 			
 		if(x == 0 || x == this.picture.width() - 1 || y == 0 || y == this.height() - 1)
@@ -102,13 +105,13 @@ public class SeamCarver
 		return result;
 	}
 	
-	private double[][] transposeEnergyMatrix(double[][] energyMatrix)
+	private double[][] transposeEnergyMatrix(double[][] eMatrix)
 	{
-		double[][] result = new double[energyMatrix[0].length][energyMatrix.length];
-		for(int i = 0; i < energyMatrix.length; i++)
+		double[][] result = new double[eMatrix[0].length][eMatrix.length];
+		for(int i = 0; i < eMatrix.length; i++)
 		{
-			for(int j = 0; j < energyMatrix[i].length; j++)
-				result[j][i] = energyMatrix[i][j];
+			for(int j = 0; j < eMatrix[i].length; j++)
+				result[j][i] = eMatrix[i][j];
 		}
 		
 		return result;
@@ -116,33 +119,32 @@ public class SeamCarver
 	
 	public int[] findVerticalSeam()
 	{
-		double[][] energyMatrix = energyMatrix();
 		init(energyMatrix);
-		return findMinSeam(energyMatrix);
+		return findMinSeam(this.energyMatrix);
 	}
 	
-	private int[] findMinSeam(double[][] energyMatrix)
+	private int[] findMinSeam(double[][] eMatrix)
 	{
 		//the matrix is already in topological order (by definition)
 		//we need to traverse it top-down and relax all edges 
 		//and thus calculate minimum pixel energies in the process
 		
 		/**/
-		for(int j = 0; j < energyMatrix[0].length - 1; j++)
+		for(int j = 0; j < eMatrix[0].length - 1; j++)
 		{
-			for(int i = 0; i < energyMatrix.length; i++)
+			for(int i = 0; i < eMatrix.length; i++)
 			{
 				//relaxation of edges
 				//the neighbor down left
 				if(i > 0) 
-					relax(i, j, i - 1, j + 1, energyMatrix[i - 1][j + 1]);
+					relax(i, j, i - 1, j + 1, eMatrix[i - 1][j + 1]);
 					
 				//the neighbor below
-				relax(i, j, i, j + 1, energyMatrix[i][j + 1]);
+				relax(i, j, i, j + 1, eMatrix[i][j + 1]);
 				
 				//the neighbor down right
-				if(i + 1 < energyMatrix.length) 
-					relax(i, j, i + 1, j + 1, energyMatrix[i + 1][j + 1]);
+				if(i + 1 < eMatrix.length) 
+					relax(i, j, i + 1, j + 1, eMatrix[i + 1][j + 1]);
 			}
 		}
 
@@ -188,9 +190,8 @@ public class SeamCarver
 	
 	public int[] findHorizontalSeam()
 	{
-		double[][] energyMatrix = transposeEnergyMatrix(energyMatrix());
-		init(energyMatrix);
-		return findMinSeam(energyMatrix);
+		init(transEnergyMatrix);
+		return findMinSeam(transEnergyMatrix);
 	}
 	
 	public void removeHorizontalSeam(int[] a)
@@ -200,11 +201,15 @@ public class SeamCarver
 		{
 			for(int j = 0; j < this.picture.height(); j++)
 			{
-				if(i != a[j])
+				if(j < a[i])
 					newPicture.set(i, j, this.picture.get(i, j));
+				else if(j > a[i])
+					newPicture.set(i, j - 1, this.picture.get(i, j));
 			}
 		}
-		
+		this.energyMatrix = energyMatrix();
+		this.transEnergyMatrix = transposeEnergyMatrix(this.energyMatrix());
+
 		this.picture = newPicture;
 	}
 	
@@ -215,10 +220,23 @@ public class SeamCarver
 		{
 			for(int j = 0; j < this.picture.height(); j++)
 			{
-				if(j != a[i])
-					newPicture.set(i, j, this.picture.get(i, j));
+				try
+				{
+					if(i < a[j])
+						newPicture.set(i, j, this.picture.get(i, j));
+					else if(i > a[j])
+						newPicture.set(i - 1, j, this.picture.get(i, j));
+				}
+				catch(Exception ex)
+				{
+					throw new IllegalArgumentException("Bad argument! i =  " + i + " j = " + j + " a[j] = " + a[j]);
+				}
 			}
 		}
+		
+		this.energyMatrix = energyMatrix();
+		this.transEnergyMatrix = transposeEnergyMatrix(this.energyMatrix());
+
 		
 		this.picture = newPicture;
 	}
